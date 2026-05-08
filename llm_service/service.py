@@ -210,6 +210,10 @@ class TradingService:
             resp = self.stub.GetOrderBook(clob_pb2.GetOrderBookRequest(depth=args.get("depth", 5)))
             if resp.mid_price:
                 self.guardrails.update_reference_price(Decimal(resp.mid_price))
+                # Update available depth for liquidity guardrails
+                bid_depth = sum(Decimal(lv.quantity) for lv in resp.bids)
+                ask_depth = sum(Decimal(lv.quantity) for lv in resp.asks)
+                self.guardrails.update_available_depth(bid_depth, ask_depth)
             return {
                 "bids":      [{"price": lv.price, "qty": lv.quantity} for lv in resp.bids],
                 "asks":      [{"price": lv.price, "qty": lv.quantity} for lv in resp.asks],

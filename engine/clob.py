@@ -290,26 +290,26 @@ class OrderBook:
 
     def _match(self, incoming: Order) -> list[Trade]:
         """
-        Price-time priority matching using SortedDict.irange_key().
+        Price-time priority matching using SortedDict.irange().
 
         BUY  taker: iterate asks ascending (cheapest first), stop when ask > limit
         SELL taker: iterate bids descending (highest first), stop when bid < limit
 
-        irange_key() returns only keys within the crossable range — O(k) where
+        irange() returns only keys within the crossable range — O(k) where
         k is the number of price levels actually consumed.
         """
         trades: list[Trade] = []
 
         if incoming.side == OrderSide.BUY:
             # Match against asks with price ≤ incoming limit price
-            for price in list(self._asks.irange_key(None, incoming.price)):
+            for price in list(self._asks.irange(None, incoming.price)):
                 if incoming.remaining_quantity <= 0:
                     break
                 trades.extend(self._fill_at_level(incoming, self._asks[price], price))
             self._prune(self._asks)
         else:
             # Match against bids with price ≥ incoming limit price (highest first)
-            for price in reversed(list(self._bids.irange_key(incoming.price, None))):
+            for price in reversed(list(self._bids.irange(incoming.price, None))):
                 if incoming.remaining_quantity <= 0:
                     break
                 trades.extend(self._fill_at_level(incoming, self._bids[price], price))
