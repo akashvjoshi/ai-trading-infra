@@ -99,6 +99,25 @@ message GetTradesResponse {
   repeated Trade trades = 1;
 }
 
+message QuoteFill {
+  string price    = 1;
+  string quantity = 2;
+}
+
+message QuoteRequest {
+  OrderSide side     = 1;
+  string    quantity = 2;
+}
+
+message QuoteResponse {
+  string             executable_price  = 1;  // VWAP fill price
+  repeated QuoteFill fills             = 2;  // levels consumed
+  string             slippage_from_mid = 3;  // e.g. "0.11%"
+  string             recommendation    = 4;  // ready-to-use place_order call
+  bool               fully_fillable    = 5;  // false when book is too thin
+  string             fillable_quantity = 6;  // how much can actually be filled
+}
+
 // ─────────────────────── Service ──────────────────────────────
 
 service ClobService {
@@ -107,4 +126,5 @@ service ClobService {
   rpc GetOrderBook (GetOrderBookRequest)  returns (GetOrderBookResponse);
   rpc GetOrder     (GetOrderRequest)      returns (GetOrderResponse);
   rpc GetTrades    (GetTradesRequest)     returns (GetTradesResponse);
+  rpc Quote        (QuoteRequest)         returns (QuoteResponse);
 }

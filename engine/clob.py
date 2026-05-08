@@ -6,6 +6,7 @@ Primary functions
   1. Spot Limit Buy    — place_order(OrderSide.BUY,  price, qty)
   2. Spot Limit Sell   — place_order(OrderSide.SELL, price, qty)
   3. Order Cancellation— cancel_order(order_id)
+  4. Fill Quote        — quote_order(side, qty)  [read-only, no state mutation]
 
 Matching rule
 ─────────────
@@ -264,6 +265,85 @@ class OrderBook:
                 "best_ask":  best_ask,
                 "spread":    spread,
                 "mid_price": mid_price,
+            }
+
+    def quote_order(self, side: OrderSide, quantity: Decimal) -> dict:
+        """
+        Simulate filling `quantity` against the live book without mutating state.
+
+        BUY  taker: walks asks ascending (cheapest first).
+        SELL taker: walks bids descending (highest first).
+
+        Returns executable_price (VWAP), fills, slippage_from_mid,
+        recommendation, fully_fillable, and fillable_quantity.
+        Read-only — holds only the read lock.
+        """
+        with self._rwlock.read_locked():
+            bid_keys = list(reversed(self._bids.keys()))
+            ask_keys = list(self._asks.keys())
+
+            best_bid = bid_keys[0] if bid_keys else None
+            best_ask = ask_keys[0] if ask_keys else None
+            mid = (best_bid + best_ask) / 2 if (best_bid is not None and best_ask is not None) else None
+
+            walk_keys = ask_keys if side == OrderSide.BUY else list(reversed(self._bids.keys()))
+            book      = self._asks if side == OrderSide.BUY else self._bids
+
+            fills:      list[dict] = []
+            remaining  = quantity
+            total_cost = Decimal("0")
+
+            for price in walk_keys:
+                if remaining <= 0:
+                    break
+                level_qty = sum(
+                    o.remaining_quantity for o in book.get(price, []) if o.is_active()
+                )
+                if level_qty <= 0:
+                    continue
+                fill_qty = min(remaining, level_qty)
+                fills.append({"price": str(price), "qty": str(fill_qty)})
+                total_cost += price * fill_qty
+                remaining  -= fill_qty
+
+            fillable_qty   = quantity - remaining
+            fully_fillable = remaining <= 0
+
+            if fillable_qty > 0:
+                vwap     = (total_cost / fillable_qty).quantize(Decimal("0.01"))
+                vwap_str = str(vwap)
+            else:
+                vwap_str = ""
+
+            slippage_str = ""
+            if mid is not None and vwap_str:
+                vwap_dec = Decimal(vwap_str)
+                raw      = (vwap_dec - mid) / mid * 100 if side == OrderSide.BUY else (mid - vwap_dec) / mid * 100
+                slippage_str = f"{abs(raw).quantize(Decimal('0.0001'))}%"
+
+            if not fills:
+                side_label    = "ask" if side == OrderSide.BUY else "bid"
+                recommendation = f"No liquidity on the {side_label} side. Cannot fill this order."
+            elif not fully_fillable:
+                worst_price    = fills[-1]["price"]
+                recommendation = (
+                    f"Only {fillable_qty} ETH fillable (requested {quantity}). "
+                    f"place_order({side.value}, {worst_price}, {fillable_qty}) for a partial fill."
+                )
+            else:
+                worst_price    = fills[-1]["price"]
+                recommendation = (
+                    f"place_order({side.value}, {worst_price}, {quantity}) "
+                    f"to guarantee a full fill at VWAP {vwap_str}"
+                )
+
+            return {
+                "executable_price":  vwap_str,
+                "fills":             fills,
+                "slippage_from_mid": slippage_str,
+                "recommendation":    recommendation,
+                "fully_fillable":    fully_fillable,
+                "fillable_quantity": str(fillable_qty),
             }
 
     def get_order(self, order_id: str) -> Optional[Order]:

@@ -146,6 +146,35 @@ class ClobServicer(clob_pb2_grpc.ClobServiceServicer):
         )
         return clob_pb2.GetTradesResponse(trades=[_trade_to_pb(t) for t in trades])
 
+    def Quote(self, request, context):
+        try:
+            quantity = Decimal(request.quantity)
+        except Exception as exc:
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details(f"Invalid quantity: {exc}")
+            return clob_pb2.QuoteResponse()
+
+        if quantity <= 0:
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details("Quantity must be positive")
+            return clob_pb2.QuoteResponse()
+
+        side   = OrderSide.BUY if request.side == clob_pb2.BUY else OrderSide.SELL
+        result = self._book.quote_order(side, quantity)
+        logger.info("Quote side=%s qty=%s → vwap=%s fillable=%s",
+                    side.value, quantity, result["executable_price"], result["fillable_quantity"])
+        return clob_pb2.QuoteResponse(
+            executable_price  = result["executable_price"],
+            fills             = [
+                clob_pb2.QuoteFill(price=f["price"], quantity=f["qty"])
+                for f in result["fills"]
+            ],
+            slippage_from_mid = result["slippage_from_mid"],
+            recommendation    = result["recommendation"],
+            fully_fillable    = result["fully_fillable"],
+            fillable_quantity = result["fillable_quantity"],
+        )
+
 
 # ── public entry point ────────────────────────────────────────────
 

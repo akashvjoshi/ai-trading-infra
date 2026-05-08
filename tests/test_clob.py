@@ -375,6 +375,97 @@ def test_cancel_twice_fails_second_time(book):
 
 # ─────────────── Bounded trade log ────────────────────────────────
 
+# ─────────────────────── quote_order ─────────────────────────
+
+def test_quote_empty_book_returns_no_liquidity(book):
+    result = book.quote_order(OrderSide.BUY, Decimal("2"))
+    assert result["fully_fillable"] is False
+    assert result["fillable_quantity"] == "0"
+    assert result["executable_price"] == ""
+    assert "No liquidity" in result["recommendation"]
+
+
+def test_quote_buy_single_level_exact_fill(book):
+    book.place_order(OrderSide.SELL, Decimal("3210"), Decimal("2"))
+    result = book.quote_order(OrderSide.BUY, Decimal("2"))
+    assert result["fully_fillable"] is True
+    assert result["fillable_quantity"] == "2"
+    assert result["executable_price"] == "3210.00"
+    assert len(result["fills"]) == 1
+    assert result["fills"][0] == {"price": "3210", "qty": "2"}
+
+
+def test_quote_buy_spans_multiple_levels_vwap(book):
+    book.place_order(OrderSide.SELL, Decimal("3210"), Decimal("1.5"))
+    book.place_order(OrderSide.SELL, Decimal("3215"), Decimal("1.0"))
+    result = book.quote_order(OrderSide.BUY, Decimal("2"))
+    assert result["fully_fillable"] is True
+    assert len(result["fills"]) == 2
+    assert result["fills"][0] == {"price": "3210", "qty": "1.5"}
+    assert result["fills"][1] == {"price": "3215", "qty": "0.5"}
+    # VWAP = (3210*1.5 + 3215*0.5) / 2.0 = (4815 + 1607.5) / 2 = 3211.25
+    assert result["executable_price"] == "3211.25"
+
+
+def test_quote_sell_spans_multiple_levels_vwap(book):
+    book.place_order(OrderSide.BUY, Decimal("3200"), Decimal("1.0"))
+    book.place_order(OrderSide.BUY, Decimal("3195"), Decimal("1.5"))
+    result = book.quote_order(OrderSide.SELL, Decimal("2"))
+    assert result["fully_fillable"] is True
+    assert len(result["fills"]) == 2
+    # Highest bid first: 3200 takes 1.0, then 3195 takes 1.0
+    assert result["fills"][0] == {"price": "3200", "qty": "1.0"}
+    assert result["fills"][1] == {"price": "3195", "qty": "1.0"}
+    # VWAP = (3200*1 + 3195*1) / 2 = 3197.5
+    assert result["executable_price"] == "3197.50"
+
+
+def test_quote_insufficient_liquidity(book):
+    book.place_order(OrderSide.SELL, Decimal("3210"), Decimal("0.5"))
+    result = book.quote_order(OrderSide.BUY, Decimal("2"))
+    assert result["fully_fillable"] is False
+    assert result["fillable_quantity"] == "0.5"
+    assert "Only" in result["recommendation"]
+    assert "partial fill" in result["recommendation"]
+
+
+def test_quote_does_not_mutate_book(book):
+    book.place_order(OrderSide.SELL, Decimal("3210"), Decimal("2"))
+    snap_before = book.get_snapshot()
+    book.quote_order(OrderSide.BUY, Decimal("2"))
+    snap_after = book.get_snapshot()
+    assert snap_before["asks"] == snap_after["asks"]
+
+
+def test_quote_recommendation_contains_place_order(book):
+    book.place_order(OrderSide.SELL, Decimal("3210"), Decimal("2"))
+    result = book.quote_order(OrderSide.BUY, Decimal("2"))
+    assert "place_order" in result["recommendation"]
+    assert "BUY" in result["recommendation"]
+    # Limit price = worst level consumed = 3210
+    assert "3210" in result["recommendation"]
+
+
+def test_quote_slippage_positive_for_buy(book):
+    book.place_order(OrderSide.BUY,  Decimal("3200"), Decimal("1"))  # best bid
+    book.place_order(OrderSide.SELL, Decimal("3210"), Decimal("2"))  # ask side
+    result = book.quote_order(OrderSide.BUY, Decimal("1"))
+    # mid = (3200+3210)/2 = 3205; vwap = 3210; slippage = (3210-3205)/3205 > 0
+    assert result["slippage_from_mid"] != ""
+    pct = Decimal(result["slippage_from_mid"].rstrip("%"))
+    assert pct > 0
+
+
+def test_quote_slippage_positive_for_sell(book):
+    book.place_order(OrderSide.BUY,  Decimal("3200"), Decimal("2"))  # bid side
+    book.place_order(OrderSide.SELL, Decimal("3210"), Decimal("1"))  # best ask
+    result = book.quote_order(OrderSide.SELL, Decimal("1"))
+    # mid = 3205; vwap = 3200; slippage = (3205-3200)/3205 > 0
+    assert result["slippage_from_mid"] != ""
+    pct = Decimal(result["slippage_from_mid"].rstrip("%"))
+    assert pct > 0
+
+
 def test_trades_bounded_by_max_trades():
     small_book = OrderBook(max_trades=5)
     for i in range(10):

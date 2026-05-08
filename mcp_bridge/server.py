@@ -268,6 +268,33 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name        = "quote",
+            description = (
+                "Get an instant fill quote for a BUY or SELL without placing an order. "
+                "Call this instead of get_orderbook + manual price math — it walks the book "
+                "server-side and returns a single, ready-to-use answer. "
+                "Returns: executable_price (volume-weighted avg fill price), fills (which "
+                "price levels get consumed and how much), slippage_from_mid (%), "
+                "fully_fillable (bool), and recommendation (exact place_order call to use). "
+                "Use this any time a user asks 'what will it cost to buy/sell X ETH?'."
+            ),
+            inputSchema = {
+                "type": "object",
+                "properties": {
+                    "side": {
+                        "type":        "string",
+                        "enum":        ["BUY", "SELL"],
+                        "description": "Direction: BUY to acquire ETH, SELL to dispose of ETH",
+                    },
+                    "quantity": {
+                        "type":        "string",
+                        "description": "ETH amount to quote, as a decimal string e.g. '2.0'",
+                    },
+                },
+                "required": ["side", "quantity"],
+            },
+        ),
+        types.Tool(
             name        = "get_trades",
             description = (
                 "Retrieve recent trade history. "
@@ -344,6 +371,75 @@ def _dispatch(stub, name: str, args: dict) -> dict:
                 {"id": t.trade_id[:8], "price": t.price, "qty": t.quantity}
                 for t in resp.trades
             ],
+        }
+
+    if name == "quote":
+        side     = args["side"].upper()
+        quantity = Decimal(args["quantity"])
+
+        # Full-depth snapshot — depth=0 returns all levels
+        resp = stub.GetOrderBook(clob_pb2.GetOrderBookRequest(depth=0))
+
+        # BUY taker consumes asks cheapest-first (snapshot is ascending).
+        # SELL taker consumes bids highest-first (snapshot is descending).
+        raw_levels = resp.asks if side == "BUY" else resp.bids
+        levels = [
+            {"price": Decimal(lv.price), "qty": Decimal(lv.quantity)}
+            for lv in raw_levels
+        ]
+
+        mid = Decimal(resp.mid_price) if resp.mid_price else None
+
+        fills:      list[dict] = []
+        remaining  = quantity
+        total_cost = Decimal("0")
+
+        for lv in levels:
+            if remaining <= 0:
+                break
+            fill_qty    = min(remaining, lv["qty"])
+            fills.append({"price": str(lv["price"]), "qty": str(fill_qty)})
+            total_cost += lv["price"] * fill_qty
+            remaining  -= fill_qty
+
+        fillable_qty   = quantity - remaining
+        fully_fillable = remaining <= 0
+
+        if fillable_qty > 0:
+            vwap     = (total_cost / fillable_qty).quantize(Decimal("0.01"))
+            vwap_str = str(vwap)
+        else:
+            vwap_str = ""
+
+        slippage_str = ""
+        if mid is not None and vwap_str:
+            vwap_dec = Decimal(vwap_str)
+            raw      = (vwap_dec - mid) / mid * 100 if side == "BUY" else (mid - vwap_dec) / mid * 100
+            slippage_str = f"{abs(raw).quantize(Decimal('0.0001'))}%"
+
+        if not fills:
+            side_label    = "ask" if side == "BUY" else "bid"
+            recommendation = f"No liquidity on the {side_label} side. Cannot fill this order."
+        elif not fully_fillable:
+            worst_price    = fills[-1]["price"]
+            recommendation = (
+                f"Only {fillable_qty} ETH fillable (requested {quantity}). "
+                f"place_order({side}, {worst_price}, {fillable_qty}) for a partial fill."
+            )
+        else:
+            worst_price    = fills[-1]["price"]
+            recommendation = (
+                f"place_order({side}, {worst_price}, {str(quantity)}) "
+                f"to guarantee a full fill at VWAP {vwap_str}"
+            )
+
+        return {
+            "executable_price":  vwap_str,
+            "fills":             fills,
+            "slippage_from_mid": slippage_str,
+            "recommendation":    recommendation,
+            "fully_fillable":    fully_fillable,
+            "fillable_quantity": str(fillable_qty),
         }
 
     if name == "cancel_order":
