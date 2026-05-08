@@ -8,6 +8,10 @@ import logging
 import sys
 import time
 from decimal import Decimal
+import os
+
+# Add the parent directory to sys.path to enable imports from engine and llm_service
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ── bootstrap: start the engine in a background thread ────────────
 import threading
