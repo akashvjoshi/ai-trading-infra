@@ -1,0 +1,16 @@
+# Core engine
+grpcio>=1.60.0
+grpcio-tools>=1.60.0
+protobuf>=4.25.0
+sortedcontainers>=2.4.0   # O(log n) price-level management in the CLOB
+
+# MCP bridge
+mcp>=1.0.0
+
+# LLM service
+anthropic>=0.40.0
+python-dotenv>=1.0.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

@@ -1,0 +1,30 @@
+# Environment
+.env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Generated proto stubs (regenerate with: make proto)
+engine/generated/clob_pb2.py
+engine/generated/clob_pb2_grpc.py
+
+# Test / eval output
+.pytest_cache/
+eval_results.json
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp

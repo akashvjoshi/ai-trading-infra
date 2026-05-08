@@ -1,0 +1,110 @@
+syntax = "proto3";
+
+package clob;
+
+// ─────────────────────── Enums ────────────────────────────────
+
+enum OrderSide {
+  BUY  = 0;
+  SELL = 1;
+}
+
+enum OrderStatus {
+  OPEN             = 0;
+  FILLED           = 1;
+  PARTIALLY_FILLED = 2;
+  CANCELLED        = 3;
+}
+
+// ─────────────────────── Messages ─────────────────────────────
+
+message Order {
+  string      order_id        = 1;
+  OrderSide   side            = 2;
+  string      price           = 3;  // decimal string for precision
+  string      quantity        = 4;
+  string      filled_quantity = 5;
+  OrderStatus status          = 6;
+  int64       created_at      = 7;  // nanoseconds since epoch
+}
+
+message Trade {
+  string trade_id      = 1;
+  string buy_order_id  = 2;
+  string sell_order_id = 3;
+  string price         = 4;
+  string quantity      = 5;
+  int64  timestamp     = 6;
+}
+
+message PriceLevel {
+  string price       = 1;
+  string quantity    = 2;
+  int32  order_count = 3;
+}
+
+// ─────────────────────── RPC Messages ─────────────────────────
+
+message PlaceOrderRequest {
+  OrderSide side     = 1;
+  string    price    = 2;
+  string    quantity = 3;
+}
+
+message PlaceOrderResponse {
+  string         order_id = 1;
+  Order          order    = 2;
+  repeated Trade trades   = 3;
+}
+
+message CancelOrderRequest {
+  string order_id = 1;
+}
+
+message CancelOrderResponse {
+  bool   success = 1;
+  string message = 2;
+  Order  order   = 3;
+}
+
+message GetOrderBookRequest {
+  int32 depth = 1;  // 0 = all levels
+}
+
+message GetOrderBookResponse {
+  repeated PriceLevel bids      = 1;
+  repeated PriceLevel asks      = 2;
+  string              best_bid  = 3;
+  string              best_ask  = 4;
+  string              spread    = 5;
+  string              mid_price = 6;
+  int64               timestamp = 7;
+}
+
+message GetOrderRequest {
+  string order_id = 1;
+}
+
+message GetOrderResponse {
+  Order order = 1;
+  bool  found = 2;
+}
+
+message GetTradesRequest {
+  int32  limit    = 1;  // default 50
+  string order_id = 2;  // optional filter
+}
+
+message GetTradesResponse {
+  repeated Trade trades = 1;
+}
+
+// ─────────────────────── Service ──────────────────────────────
+
+service ClobService {
+  rpc PlaceOrder   (PlaceOrderRequest)    returns (PlaceOrderResponse);
+  rpc CancelOrder  (CancelOrderRequest)   returns (CancelOrderResponse);
+  rpc GetOrderBook (GetOrderBookRequest)  returns (GetOrderBookResponse);
+  rpc GetOrder     (GetOrderRequest)      returns (GetOrderResponse);
+  rpc GetTrades    (GetTradesRequest)     returns (GetTradesResponse);
+}
