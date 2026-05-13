@@ -4,7 +4,7 @@ A vertical slice of autonomous AI trading infrastructure, connecting a determini
 
 ```
 Natural language  ──►  LLM Service  ──►  MCP Bridge  ──►  gRPC Engine
-    "Buy 1 ETH"       (Claude + tools)   (MCP server)      (CLOB)
+    "Buy 1 ETH"       (LLM + tools)   (MCP server)      (CLOB)
 ```
 
 ---
@@ -107,7 +107,7 @@ Wraps the gRPC engine in a Model Context Protocol server so any MCP-capable LLM 
 ### Run the MCP server
 
 ```bash
-make mcp   # listens on stdio — connect via Claude Desktop or any MCP client
+make mcp   # listens on stdio — connect via any MCP client
 ```
 
 ---
@@ -116,14 +116,14 @@ make mcp   # listens on stdio — connect via Claude Desktop or any MCP client
 
 **File:** `llm_service/service.py`, `llm_service/guardrails.py`
 
-A conversational service using Claude with an agentic tool-calling loop.
+A conversational service using an LLM with an agentic tool-calling loop.
 
 ### How it works
 
 1. User message → `Guardrails.check_input()` → blocked or passed
-2. Message appended to conversation history → sent to Claude
-3. Claude emits `tool_use` blocks → `Guardrails.check_tool_call()` → blocked or executed
-4. Tool results fed back → Claude generates final reply
+2. Message appended to conversation history → sent to the LLM
+3. The LLM emits `tool_use` blocks → `Guardrails.check_tool_call()` → blocked or executed
+4. Tool results fed back → the LLM generates final reply
 5. Reply returned to user; history retained for multi-turn context
 
 ### Guardrails
@@ -282,7 +282,7 @@ make eval
 # Terminal 1 — engine
 make engine
 
-# Terminal 2 — MCP bridge (connect to Claude Desktop)
+# Terminal 2 — MCP bridge (connect to your LLM client)
 make mcp
 
 # Terminal 3 — evaluation

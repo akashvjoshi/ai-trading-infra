@@ -29,6 +29,10 @@ demo:
 test:
 	pytest tests/test_clob.py tests/test_guardrails.py -v
 
+# ── Integration tests (requires gRPC engine) ──────────────────────
+test-integration:
+	pytest tests/test_integration.py -v -s
+
 # ── Full test suite ────────────────────────────────────────────────
 test-all:
 	pytest -v
